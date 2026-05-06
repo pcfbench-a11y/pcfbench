@@ -38,10 +38,21 @@ pip install -e .   # or: uv sync
 # 3. Get the data from Kaggle (dataset path is in the paper). Download
 #    the JSONL files into ./pcfbench_data_external/.
 
-# 4. Set credentials for whichever model you'll evaluate
-export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY, or Vertex creds for Gemini/etc.
+```
 
-# 5. Run an eval (example: decomposition on 10 items with Haiku 4.5)
+To run any of {Opus 4.6, Sonnet 4.6, Haiku 4.5, Gemini 3.1 Pro, Gemini 3 Flash,
+DeepSeek v3.2} you need Vertex AI access:
+
+- `gcloud auth application-default login` (or a service-account JSON via
+  `GOOGLE_APPLICATION_CREDENTIALS`)
+- `VERTEX_PROJECT_ID` / `GOOGLE_CLOUD_PROJECT` / `GCP_PROJECT` set (or rely on
+  ADC's default project)
+
+For the OpenAI rows: `OPENAI_API_KEY`. `ANTHROPIC_API_KEY` is **not** supported
+— Anthropic models route through Vertex AI.
+
+```bash
+# 4. Run an eval (example: decomposition on 10 items with Haiku 4.5)
 python -m pcfbench.evals.runner pcfbench_decomposition \
     --model "claude-haiku-4-5@20251001" \
     --data-dir pcfbench_data_external \
