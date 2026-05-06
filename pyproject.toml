@@ -1,0 +1,63 @@
+# Package metadata for the standalone PCFBench distribution.
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pcfbench"
+version = "0.1.0"
+description = "Process-based product carbon footprint benchmark for LLMs and agents."
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+keywords = ["benchmark", "llm", "agents", "lca", "carbon-footprint", "ecoinvent"]
+classifiers = [
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "anthropic>=0.40,<1.0",
+    "google-auth>=2.20,<3.0",
+    "google-genai>=1.2,<2.0",
+    "httpx>=0.25,<1.0",
+    "huggingface-hub>=0.20,<1.0",
+    "numpy>=1.24,<3.0",
+    "openai>=1.12,<2.0",
+    "pandas[excel]>=2.0,<3.0",
+    "pydantic>=2.0,<3.0",
+    "pydantic-ai>=1.0,<2.0",
+    "tenacity>=8.2,<9.0",
+]
+
+[project.optional-dependencies]
+# Sentence-Transformers is only needed for the Parakeet specialized
+# mapping baseline (GTE-Large retrieval) and for building the GTE
+# embedding cache via picklist.embed_gte.
+embeddings = ["sentence-transformers>=3.0,<4.0"]
+
+# Tests + linting.
+dev = [
+    "import-linter>=2.3,<3.0",
+    "pytest>=8.0,<9.0",
+    "ruff>=0.6",
+]
+
+[project.urls]
+Homepage     = "https://github.com/anonymous/pcfbench"
+Repository   = "https://github.com/anonymous/pcfbench"
+Issues       = "https://github.com/anonymous/pcfbench/issues"
+
+[project.scripts]
+pcfbench-runner = "pcfbench.evals.runner:main"
+
+[tool.setuptools.packages.find]
+include = ["pcfbench*"]
+exclude = ["pcfbench.smoke*", "tests*"]
+
+[tool.setuptools.package-data]
+"pcfbench.picklist" = ["*.txt", "README.md"]

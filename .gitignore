@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Build artifacts
+build/
+dist/
+
+# Cached source workbooks (regenerable; build_picklist_json downloads from ecoinvent)
+*.xlsx
+
+# Run outputs
+pcfbench/runs/
+
+# Embeddings (regenerable; rebuild via pcfbench.picklist.embed_gemini / embed_gte)
+pcfbench/picklist/embeddings_gemini.npy
+pcfbench/picklist/embeddings_gte.npy
+pcfbench/picklist/embeddings_gemini_uuids.json
+pcfbench/picklist/embeddings_gte_uuids.json
