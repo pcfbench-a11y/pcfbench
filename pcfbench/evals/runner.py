@@ -59,6 +59,12 @@ from pcfbench.agents.parakeet import (
     load_parakeet_state,
     run_parakeet_mapping,
 )
+from pcfbench.agents.stepwise import (
+    StepwiseConfig,
+    StepwiseResult,
+    build_pipeline_agents,
+    run_stepwise_compositional,
+)
 from pcfbench.agents.triage import (
     TriageInput,
     TriageMarket,
@@ -83,6 +89,9 @@ from pcfbench.scoring import (
 )
 from pcfbench.scoring import (
     mapping as _score_map,
+)
+from pcfbench.scoring import (
+    stepwise as _score_stepwise,
 )
 from pcfbench.scoring import (
     triage as _score_triage,
@@ -152,6 +161,59 @@ def score_epd(out, expected: dict) -> dict:
     truth_kg = expected.get("kgco2e")
     rel_err = _score_epd.score_relative_error(pred_kg, truth_kg)
     return {"rel_err": rel_err}
+
+
+def score_stepwise(out, expected: dict) -> dict:
+    """Wrapper that the eval registry binds to the stepwise EvalSpec.
+
+    Per-item structural-invariant scores only. We deliberately do NOT
+    score ``kgco2e_predicted`` against EPD truth here — the shipping
+    default ``ef_resolver`` returns ``None`` for every material, so
+    aggregate kgCO2e is not a PCF estimate. License-holders who plug
+    in a real resolver can grade the kgCO2e column themselves from
+    the stored ``output.kgco2e_predicted``."""
+    return _score_stepwise.score_stepwise_violations(out, expected)
+
+
+# --- Stepwise pipeline factory + runner -----------------------------------
+
+
+def _no_ef_resolver(_reference_product: str) -> float | None:
+    """Shipping default: no material-EF lookup. Energy EFs are public
+    constants baked into the pipeline, so the structural invariants
+    (mass-balance, ghost components, depth, stage success) are still
+    populated; only ``kgco2e_predicted`` becomes a partial sum (energy
+    only) that this harness does NOT grade. License-holders should
+    pass their own resolver via ``StepwiseConfig.ef_resolver`` to
+    produce a full kgCO2e estimate."""
+    return None
+
+
+def build_stepwise_config(*, model_id: str) -> StepwiseConfig:
+    """Construct a license-free ``StepwiseConfig`` for the given model.
+
+    Loads the public picklist-name material library, pre-builds the
+    four sub-agents the pipeline needs, and wires the no-op
+    ``_no_ef_resolver`` so the pipeline runs end-to-end without an
+    ecoinvent licence."""
+    library = MaterialLibrary.load_default()
+    agents = build_pipeline_agents(model_id=model_id)
+    return StepwiseConfig(
+        model_id=model_id,
+        library=library,
+        ef_resolver=_no_ef_resolver,
+        decomp_agent=agents["decomp"],
+        triage_agent=agents["triage"],
+        mapping_agent=agents["mapping"],
+        rate_agent=agents["rate"],
+    )
+
+
+async def run_stepwise(*, agent: StepwiseConfig, inp: EPDInput) -> StepwiseResult:
+    """Adapter so the dispatcher's default branch (``run_fn(agent, inp)``)
+    can drive the stepwise pipeline. ``agent`` here is the
+    ``StepwiseConfig`` bundle returned by ``build_stepwise_config``."""
+    return await run_stepwise_compositional(epd=inp, config=agent)
 
 
 # --- Eval registry ---
@@ -342,6 +404,24 @@ EVALS: dict[str, EvalSpec] = {
         run_fn=run_epd_with_region,
         scorer=score_epd,
     ),
+    # Bottom-up compositional Task 7. The pipeline (decompose → triage →
+    # map → rate-estimate → sum) reads only ``product_name``,
+    # ``description``, and ``quantity_unit`` from each EPD — the same
+    # field set the single-shot ``pcfbench_epd_with_description``
+    # headline T7 baseline sees, so direct-vs-compositional is an
+    # apples-to-apples disclosure-matched comparison. The shipping
+    # default ``ef_resolver`` is a no-op, so ``kgco2e_predicted`` is
+    # NOT a PCF estimate; we score on structural invariants only (mass
+    # balance, ghost components, recursion depth, per-stage success).
+    # License-holders can plug a real ecoinvent resolver into
+    # ``StepwiseConfig.ef_resolver`` to grade kgCO2e themselves.
+    "pcfbench_stepwise_with_description": EvalSpec(
+        dataset="lca_benchmark_paper_epd_stepwise",
+        parse_input=_parse_epd,
+        build_agent=build_stepwise_config,
+        run_fn=run_stepwise,
+        scorer=score_stepwise,
+    ),
 }
 
 
@@ -357,6 +437,9 @@ DATASET_TO_FILES: dict[str, list[str]] = {
         "task5_extraction_energy.jsonl",
     ],
     "lca_benchmark_paper_epd": ["task7_epd.jsonl"],
+    # Alias: the stepwise eval reads the same EPD JSONL but routes
+    # through a different scorer + summary branch.
+    "lca_benchmark_paper_epd_stepwise": ["task7_epd.jsonl"],
 }
 
 
@@ -638,6 +721,9 @@ def _summarize(rows: list[dict], spec: EvalSpec) -> dict:
         summary["mean_relative_error"] = _score_epd.run_mean_relative_error(rel_errs)
         return summary
 
+    if spec.dataset == "lca_benchmark_paper_epd_stepwise":
+        return _score_stepwise.summarize_stepwise(rows)
+
     if spec.dataset == "lca_benchmark_paper_triage":
         # Accuracy = mean(correct).
         correct_vals = [
@@ -708,7 +794,7 @@ def _summarize(rows: list[dict], spec: EvalSpec) -> dict:
     return summary
 
 
-_DEFAULT_DATA_DIR = Path(__file__).resolve().parents[2] / "pcfbench_data"
+_DEFAULT_DATA_DIR = Path(__file__).resolve().parents[2] / "pcfbench_data_external"
 
 
 async def main() -> None:

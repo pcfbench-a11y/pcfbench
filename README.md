@@ -36,7 +36,7 @@ cd pcfbench
 pip install -e .   # or: uv sync
 
 # 3. Get the data from Kaggle (dataset path is in the paper). Download
-#    the JSONL files into ./pcfbench_data/.
+#    the JSONL files into ./pcfbench_data_external/.
 
 # 4. Set credentials for whichever model you'll evaluate
 export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY, or Vertex creds for Gemini/etc.
@@ -44,7 +44,7 @@ export ANTHROPIC_API_KEY=...   # or OPENAI_API_KEY, or Vertex creds for Gemini/e
 # 5. Run an eval (example: decomposition on 10 items with Haiku 4.5)
 python -m pcfbench.evals.runner pcfbench_decomposition \
     --model "claude-haiku-4-5@20251001" \
-    --data-dir pcfbench_data \
+    --data-dir pcfbench_data_external \
     --limit 10
 ```
 
@@ -58,10 +58,29 @@ pcfbench_triage                       pcfbench_triage_agentic
 pcfbench_mapping_with_context         pcfbench_mapping_agentic_with_context
 pcfbench_extraction                   pcfbench_extraction_query_only_estimate
 pcfbench_epd_with_composition
+pcfbench_stepwise_with_description
 ```
 
 The `_agentic` variants give the model tool access to retrieve from the ecoinvent
 picklist on demand instead of putting it all in the prompt.
+
+The `pcfbench_stepwise_with_description` eval drives the bottom-up Task 7
+pipeline (decompose → triage → map → rate → sum) end-to-end on the EPD set,
+mirroring the disclosure level of the headline T7 single-shot baseline
+(`pcfbench_epd_with_description` — name + description only) so direct-vs-
+compositional is an apples-to-apples comparison. It grades on **structural
+invariants only** — mass balance, ghost components, recursion depth, per-stage
+success — not the final kgCO2e number. Material emission factors are licensed
+under ecoinvent and are not redistributable, so the shipping default
+`ef_resolver` is a no-op (returns `None` for every reference product). The
+pipeline still runs to completion: per-component rates, BOM structure, and
+energy contributions (using the public ecoinvent v3.10 energy constants baked
+into the source) are all populated. License-holders can plug in their own
+`ef_resolver` via `StepwiseConfig.ef_resolver` to compute and grade the kgCO2e
+column. Aggregate kgCO2e numbers in the paper's direct-vs-compositional figure
+are reproducible from the published per-item traces in
+`pcfbench/runs/pcfbench_stepwise_with_description/*.jsonl` without an
+ecoinvent license.
 
 ## Repository layout
 
@@ -97,20 +116,35 @@ For headline-table parity, run the full sweep — every model in `MODELS_8`
 crossed with every eval in `EVALS_5`:
 
 ```bash
-python -m pcfbench.sweep_all --data-dir pcfbench_data
+python -m pcfbench.sweep_all --data-dir pcfbench_data_external
 ```
 
 Numbers will differ from the paper if you (a) rebuild the picklist from a newer
-ecoinvent release, or (b) run with reasoning settings that drift from the pinned
-configuration. The paper's reasoning-on rows use:
+ecoinvent release, (b) run with reasoning settings that drift from the pinned
+configuration, or (c) due to LLM non-determinism; bootstrap CIs in the paper
+resample over benchmark items, not over model runs. The paper's reasoning-on
+rows use:
 - Claude Opus 4.6: extended thinking, 8192-token budget
 - Gemini 3.1 Pro: thinking, 8192-token budget
 - GPT-5.5: `reasoning_effort=high`
 
+**Ecoinvent license required for one column / two figure panels.** Tasks 1–5
+and the single-shot Task 7 column (Table 2: "Validate") are fully reproducible
+from the published artifact with only model-provider credentials. The
+**End-to-end / Compositional** column of Table 2 and **panels (a) and (b) of
+Figure 3** report the bottom-up pipeline's aggregated kgCO2e and require
+emission factors from the licensed ecoinvent v3.11 database to compute. The
+shipping default `ef_resolver` is a no-op; license-holders can plug in their
+own resolver via `StepwiseConfig.ef_resolver` to populate `kgco2e_predicted`.
+Panel (c) of Figure 3 (mass-conservation violation rate) is reproducible
+without a license — it scores the structural invariants emitted by the
+pipeline regardless of EF availability.
+
 ## Datasets
 
-Data is published on Kaggle (path in the paper) and consists of seven JSONL
-files plus a Croissant metadata descriptor. Schema details and provenance are in
+Data is published on Kaggle (path in the paper) and consists of six JSONL
+files (one per task; Tasks 4 and 5 are split by item-level material/energy
+tag) plus a Croissant metadata descriptor. Schema details and provenance are in
 the dataset's `DATASHEET.md`.
 
 Each task JSONL row has the same envelope:
