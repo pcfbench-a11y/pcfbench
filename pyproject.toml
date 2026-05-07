@@ -25,7 +25,6 @@ dependencies = [
     "google-auth>=2.20,<3.0",
     "google-genai>=1.2,<2.0",
     "httpx>=0.25,<1.0",
-    "huggingface-hub>=0.20,<1.0",
     "numpy>=1.24,<3.0",
     "openai>=1.12,<2.0",
     "pandas[excel]>=2.0,<3.0",
@@ -48,9 +47,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage     = "https://github.com/anonymous/pcfbench"
-Repository   = "https://github.com/anonymous/pcfbench"
-Issues       = "https://github.com/anonymous/pcfbench/issues"
+Homepage     = "https://github.com/pcfbench-a11y/pcfbench"
+Repository   = "https://github.com/pcfbench-a11y/pcfbench"
+Issues       = "https://github.com/pcfbench-a11y/pcfbench/issues"
 
 [project.scripts]
 pcfbench-runner = "pcfbench.evals.runner:main"

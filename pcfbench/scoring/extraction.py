@@ -1,6 +1,12 @@
-"""Extraction scoring: greedy unit-and-value matching of predicted
-claims against ground-truth, then per-item P90|RE| / unit-correctness /
-best-RE diagnostics, and run-level claim-F1 from aggregated counts.
+"""Extraction scoring: exact-tuple match of predicted claims against
+ground-truth, then per-item P90|RE| / unit-correctness / best-RE
+diagnostics, and run-level claim-F1 from aggregated counts.
+
+A predicted claim ``(value, unit)`` matches a ground-truth claim only
+when their ``(round(value, 6), canonical_unit)`` tuples are identical
+under the same unit normalization the dataset build uses (so e.g.
+``mass%`` ↔ ``%``, ``g/kg`` ↔ ``kg/kg`` with appropriate scaling).
+Each pred and each GT can be used at most once (multiset semantics).
 """
 
 from __future__ import annotations
@@ -47,28 +53,33 @@ def _match_extraction_claims(
     pred_claims: list[tuple[float, str]],
     gt_claims: list[tuple[float, str]],
 ) -> tuple[list[tuple[int, int, float]], int, int]:
-    """Greedy bipartite match of predicted claims to ground-truth claims.
+    """Exact-tuple match of predicted claims to ground-truth claims.
 
-    Pairs are eligible only if their normalised units match. Among
-    eligible pairs we greedily pick the lowest relative error first,
-    ensuring each prediction and each ground-truth claim is used at most
-    once.
+    A predicted claim ``(value, unit)`` matches a GT claim iff their
+    ``(round(value, 6), canonical_unit)`` tuples are equal after the
+    same unit normalization the dataset build uses (which scales values
+    when collapsing equivalent unit families, e.g. ``g/kg`` × 0.001 →
+    ``kg/kg``). Each pred and each GT can be used at most once
+    (multiset semantics): if a model emits the same tuple ``k`` times
+    against a GT that has it ``j`` times, ``min(k, j)`` matches count.
 
-    For each predicted claim we try several unit cleanups (raw, comma-
-    truncated, paren-truncated, first-token); the first variant that
-    normalises to a valid GT unit is used for matching. Predictions
-    with already-clean units land on the raw form first and never see
-    the fallbacks.
+    For each predicted claim we still try several unit cleanups (raw,
+    comma-truncated, paren-truncated, first-token); the first variant
+    that normalizes to a unit appearing in GT is used. This recovers
+    matches when reasoning models pack prose into the unit field
+    (e.g. ``"h, precipitation heat treatment time"``).
+
+    Relative error on matched pairs is 0 by construction (only float
+    cleanup at the 1e-6 level survives), so the third element of each
+    match tuple is reported as 0.0 and ``score_p90_re_on_matched``
+    is vestigial under this matcher.
 
     Returns ``(matches, n_unmatched_gt, n_unmatched_pred)`` where
-    ``matches`` is a list of ``(pred_idx, gt_idx, relative_error)``.
+    ``matches`` is a list of ``(pred_idx, gt_idx, 0.0)``.
     """
     gt_normalized = [normalize_value_and_unit(v, u) for v, u in gt_claims]
     gt_units = {g_unit for _, g_unit in gt_normalized}
 
-    # For each prediction, find the first unit-candidate that normalises
-    # to a GT-known unit. Falls back to the strict normalisation if
-    # nothing matches (preserves prior behaviour for unknown-unit cases).
     pred_normalized: list[tuple[float, str]] = []
     for v, u in pred_claims:
         chosen: tuple[float, str] | None = None
@@ -81,25 +92,26 @@ def _match_extraction_claims(
             chosen = normalize_value_and_unit(v, u)
         pred_normalized.append(chosen)
 
-    candidates: list[tuple[float, int, int]] = []
-    for p_idx, (p_val, p_unit) in enumerate(pred_normalized):
-        for g_idx, (g_val, g_unit) in enumerate(gt_normalized):
-            if g_unit != p_unit:
-                continue
-            if g_val == 0:
-                continue
-            rel_err = abs(p_val - g_val) / abs(g_val)
-            candidates.append((rel_err, p_idx, g_idx))
-    candidates.sort(key=lambda x: x[0])
-    used_p: set[int] = set()
+    # Bucket GT indices by (rounded value, canonical unit). Iteration
+    # order over a list of indices in each bucket is insertion order,
+    # so ties are resolved deterministically by GT position.
+    gt_by_key: dict[tuple[float, str], list[int]] = {}
+    for g_idx, (g_val, g_unit) in enumerate(gt_normalized):
+        key = (round(g_val, 6), g_unit)
+        gt_by_key.setdefault(key, []).append(g_idx)
+
     used_g: set[int] = set()
     matches: list[tuple[int, int, float]] = []
-    for rel_err, p_idx, g_idx in candidates:
-        if p_idx in used_p or g_idx in used_g:
-            continue
-        used_p.add(p_idx)
-        used_g.add(g_idx)
-        matches.append((p_idx, g_idx, rel_err))
+    for p_idx, (p_val, p_unit) in enumerate(pred_normalized):
+        key = (round(p_val, 6), p_unit)
+        for g_idx in gt_by_key.get(key, ()):
+            if g_idx in used_g:
+                continue
+            used_g.add(g_idx)
+            matches.append((p_idx, g_idx, 0.0))
+            break
+
+    used_p = {p_idx for p_idx, _, _ in matches}
     return matches, len(gt_claims) - len(used_g), len(pred_claims) - len(used_p)
 
 
@@ -132,10 +144,13 @@ def score_p90_re_on_matched(
 ) -> float | None:
     """Per-item P90 |RE| across matched (pred, gt) pairs.
 
-    P90 (not median) because greedy matching pairs the smallest-RE
-    candidates first, which makes the median collapse to ~0 on common
-    percentage claims. P90 preserves a meaningful long-tail signal.
-    Returns ``None`` if no matches.
+    Vestigial under exact-tuple matching: matched pairs have RE == 0
+    by construction, so this returns ``0.0`` whenever there is at
+    least one match and ``None`` otherwise. Kept for downstream API
+    compatibility (``run_p90_re_on_matched``, summary tables) and
+    because ``score_best_relative_error`` -- which scans *all*
+    unit-matched pairs ignoring assignment -- still carries the
+    relative-error signal the old greedy matcher expressed here.
     """
     if predicted is None or not predicted:
         return None

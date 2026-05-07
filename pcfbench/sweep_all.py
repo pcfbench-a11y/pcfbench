@@ -12,7 +12,10 @@ import json
 import time
 from pathlib import Path
 
-from pcfbench.evals.runner import _DEFAULT_DATA_DIR, run_eval
+from pcfbench.evals.runner import (
+    _DEFAULT_DATA_DIR,
+    run_eval,
+)
 
 MODELS_8 = [
     "claude-haiku-4-5@20251001",

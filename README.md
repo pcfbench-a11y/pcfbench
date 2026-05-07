@@ -29,7 +29,7 @@ alongside the task data.
 
 ```bash
 # 1. Clone
-git clone https://github.com/anonymous/pcfbench
+git clone https://github.com/pcfbench-a11y/pcfbench
 cd pcfbench
 
 # 2. Install
@@ -68,9 +68,16 @@ pcfbench_decomposition
 pcfbench_triage                       pcfbench_triage_agentic
 pcfbench_mapping_with_context         pcfbench_mapping_agentic_with_context
 pcfbench_extraction                   pcfbench_extraction_query_only_estimate
-pcfbench_epd_with_composition
+pcfbench_epd_name_only                pcfbench_epd_with_description
+pcfbench_epd_with_composition         pcfbench_epd_with_region
 pcfbench_stepwise_with_description
 ```
+
+The four `pcfbench_epd_*` evals are a context-ablation sweep over the same
+175-item EPD set; they differ only in which fields the model sees
+(name → +description → +composition → +region). The paper's headline T7
+column uses `pcfbench_epd_with_description` to disclosure-match the
+compositional pipeline; Figure 3 panel (e) uses all four.
 
 The `_agentic` variants give the model tool access to retrieve from the ecoinvent
 picklist on demand instead of putting it all in the prompt.

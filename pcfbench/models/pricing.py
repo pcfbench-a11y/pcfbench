@@ -28,19 +28,25 @@ class ModelPrice:
 
 
 # Per-million-token USD list prices.
+# Verified 2026-05-07 against:
+#   - Anthropic: https://platform.claude.com/docs/en/about-claude/pricing
+#   - OpenAI:    https://developers.openai.com/api/docs/pricing
+#   - Vertex:    https://cloud.google.com/vertex-ai/generative-ai/pricing
+#   - DeepSeek-on-Vertex MaaS: cloudprice.net (not on Google's pricing page).
+# ModelPrice fields are (input, output, cache_read, cache_write_5m).
 _PRICES: Final[dict[str, ModelPrice]] = {
     # Anthropic on Vertex (same prices as direct API).
-    "claude-opus-4-6": ModelPrice(15.00, 75.00, 1.50, 18.75),
+    "claude-opus-4-6": ModelPrice(5.00, 25.00, 0.50, 6.25),
     "claude-sonnet-4-6": ModelPrice(3.00, 15.00, 0.30, 3.75),
     "claude-haiku-4-5@20251001": ModelPrice(1.00, 5.00, 0.10, 1.25),
     # OpenAI.
-    "gpt-5.5": ModelPrice(1.25, 10.00),
-    "gpt-5.4-mini": ModelPrice(0.25, 2.00),
-    # Google on Vertex.
-    "gemini-3.1-pro-preview": ModelPrice(1.25, 10.00),
-    "gemini-3-flash-preview": ModelPrice(0.30, 2.50),
+    "gpt-5.5": ModelPrice(5.00, 30.00),
+    "gpt-5.4-mini": ModelPrice(0.75, 4.50),
+    # Google on Vertex (≤200K context tier; >200K context is repriced).
+    "gemini-3.1-pro-preview": ModelPrice(2.00, 12.00),
+    "gemini-3-flash-preview": ModelPrice(0.50, 3.00),
     # DeepSeek-via-Vertex (MaaS list price).
-    "deepseek-ai/deepseek-v3.2-maas": ModelPrice(0.27, 1.10),
+    "deepseek-ai/deepseek-v3.2-maas": ModelPrice(0.56, 1.68),
 }
 
 
